@@ -1,0 +1,5 @@
+.env
+.codeguard_db/
+__pycache__/
+*.pyc
+venv/
