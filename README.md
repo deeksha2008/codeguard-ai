@@ -1,6 +1,6 @@
 # 🛡️ CodeGuard AI
 
-**AI-powered Regression Test Generator** — Flipkart Grid 8.0 · AI Engineering Track
+**AI-powered Regression Test Generator** —
 
 > Automatically generate pytest test cases for every code change using LLM + RAG.
 > Prevent regressions before they reach production.
@@ -114,4 +114,4 @@ codeguard/
 ## 👩‍💻 Author
 
 Deeksha · MT2025038 · IIIT Bengaluru  
-Built for Flipkart Grid 8.0 — AI Engineering Track
+
