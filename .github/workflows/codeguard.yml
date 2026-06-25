@@ -1,0 +1,104 @@
+name: CodeGuard AI - Regression Test Check
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+jobs:
+  codeguard:
+    runs-on: ubuntu-latest
+    name: AI Regression Test Generator
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need previous commit for diff
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install CodeGuard dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Index codebase
+        run: |
+          python codeguard.py index --repo .
+
+      - name: Generate diff
+        run: |
+          git diff HEAD~1 HEAD -- "*.py" > /tmp/ci.diff
+          echo "=== Diff ===" && cat /tmp/ci.diff
+
+      - name: Run CodeGuard AI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python codeguard.py run \
+            --repo . \
+            --diff /tmp/ci.diff \
+            --execute \
+            --output ./codeguard_tests \
+            --json-report ./codeguard_report.json
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeguard-tests
+          path: |
+            codeguard_tests/
+            codeguard_report.json
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let report = {};
+            try {
+              report = JSON.parse(fs.readFileSync('./codeguard_report.json', 'utf8'));
+            } catch (e) { return; }
+
+            const generated = report.generated_tests || [];
+            const impact = report.impact || [];
+            const run = report.run_result;
+
+            let body = `## 🛡️ CodeGuard AI Report\n\n`;
+            body += `**${report.diff_summary}**\n\n`;
+
+            if (generated.length > 0) {
+              body += `### ✅ Generated Tests\n`;
+              for (const t of generated) {
+                body += `- \`${t.function}\` (${t.change_type}): ${t.test_functions.length} test(s)\n`;
+              }
+              body += `\n`;
+            }
+
+            if (impact.length > 0) {
+              body += `### ⚠️ Tests At Risk\n`;
+              for (const a of impact) {
+                body += `- \`${a.test_file}\` (${(a.confidence*100).toFixed(0)}% confidence)\n`;
+              }
+              body += `\n`;
+            }
+
+            if (run) {
+              const emoji = run.failed === 0 ? '✅' : '❌';
+              body += `### ${emoji} Test Run Results\n`;
+              body += `${run.passed} passed, ${run.failed} failed, ${run.errors} errors`;
+              body += ` in ${run.duration.toFixed(2)}s\n`;
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });

@@ -1,0 +1,73 @@
+diff --git a/demo_repo/src/order_service.py b/demo_repo/src/order_service.py
+index abc123..def456 100644
+--- a/demo_repo/src/order_service.py
++++ b/demo_repo/src/order_service.py
+@@ -1,8 +1,10 @@
+ from dataclasses import dataclass, field
+ from typing import Optional
+ from datetime import datetime
++from enum import Enum
+ 
+-class InventoryError(Exception):
+-    pass
++class OrderStatus(Enum):
++    PENDING = "pending"
++    CONFIRMED = "confirmed"
++    SHIPPED = "shipped"
++    CANCELLED = "cancelled"
++    REFUNDED = "refunded"
+ 
++class InventoryError(Exception):
++    pass
++
++class PaymentError(Exception):
++    pass
++
+ @@ -45,6 +55,35 @@ class OrderService:
++    def process_payment(self, order_id: str, payment_method: str, amount: float) -> dict:
++        """
++        Process payment for an order.
++        Returns {"success": bool, "transaction_id": str, "message": str}
++        Raises PaymentError if payment fails.
++        """
++        order = self._orders.get(order_id)
++        if not order:
++            raise ValueError(f"Order {order_id} not found")
++        if order.status == "cancelled":
++            raise PaymentError("Cannot pay for a cancelled order")
++
++        expected = round(order.total(), 2)
++        if abs(amount - expected) > 0.01:
++            raise PaymentError(
++                f"Amount mismatch: expected {expected}, got {amount}"
++            )
++
++        VALID_METHODS = ["credit_card", "debit_card", "upi", "net_banking", "wallet"]
++        if payment_method not in VALID_METHODS:
++            raise PaymentError(f"Invalid payment method: {payment_method}")
++
++        import hashlib, time
++        txn_id = hashlib.sha256(f"{order_id}{time.time()}".encode()).hexdigest()[:16]
++        order.status = "confirmed"
++
++        return {
++            "success": True,
++            "transaction_id": txn_id,
++            "message": f"Payment of ₹{amount} processed via {payment_method}",
++        }
++
++    def apply_discount(self, order_id: str, code: str) -> float:
+-        DISCOUNTS = {
+-            "SAVE10": 0.10,
+-            "SAVE20": 0.20,
+-            "FLIPKART50": 0.50,
+-        }
++        DISCOUNTS = {
++            "SAVE10": 0.10,
++            "SAVE20": 0.20,
++            "SAVE30": 0.30,
++            "FLIPKART50": 0.50,
++            "GRID80": 0.80,
++        }
++        if not code or not isinstance(code, str):
++            raise ValueError("Discount code must be a non-empty string")
